@@ -23,3 +23,15 @@ class InvalidTokenException(Exception):
     """Raised when a JWT token is malformed, expired, or invalid."""
 
     pass
+
+
+class SnippetNotFoundException(Exception):
+    """Raised when a snippet cannot be found for the given user."""
+
+    pass
+
+
+class DuplicateShortcutException(Exception):
+    """Raised when a snippet shortcut already exists for a user (active or archived)."""
+
+    pass

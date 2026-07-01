@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from app.db.database import engine
 from fastapi import FastAPI
 from app.routers.users import router as UserRouter
+from app.routers.snippets import router as SnippetRouter
 
 
 @asynccontextmanager
@@ -14,3 +15,4 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 app.include_router(UserRouter, prefix="/api/users", tags=["users"])
+app.include_router(SnippetRouter, prefix="/api/snippets", tags=["snippets"])
