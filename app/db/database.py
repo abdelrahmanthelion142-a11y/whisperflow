@@ -3,6 +3,6 @@ from app.core.config import settings
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 engine = create_async_engine(
-    settings.POSTGRES_URL.get_secret_value(), poolclass=NullPool, echo=False #type:ignore
+    settings.POSTGRES_URL.get_secret_value(), poolclass=NullPool, echo=False ,connect_args={"statement_cache_size": 0} #type:ignore
 )
 AsyncSessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)

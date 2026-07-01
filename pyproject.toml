@@ -3,12 +3,14 @@ name = "whisperflow"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.18.4",
     "asyncpg>=0.31.0",
-    "fastapi>=0.136.3",
-    "pwdlib>=0.3.0",
+    "fastapi[standard,standered]>=0.136.3",
+    "mutagen>=1.48.1",
+    "openai>=2.44.0",
+    "pwdlib[argon2]>=0.3.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
     "pyjwt>=2.13.0",
