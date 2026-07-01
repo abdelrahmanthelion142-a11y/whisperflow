@@ -2,7 +2,8 @@ from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from app.dependencies import get_db
+from app.dependencies import get_current_user, get_db
+from app.models.users import User
 from app.services.users import UserService
 from app.schemas.User import UserCreate, UserPrivate
 from app.schemas.Token import Token
@@ -10,9 +11,7 @@ from app.services.exceptions import (
     UsernameAlreadyExistsException,
     EmailAlreadyExistsException,
     InvalidCredentialsException,
-    InvalidTokenException,
 )
-from app.core.security import oauth2_scheme
 
 router = APIRouter()
 
@@ -59,17 +58,7 @@ async def login_for_access_token(
 
 
 @router.get("/me", response_model=UserPrivate)
-async def get_current_user(
-    token: Annotated[str, Depends(oauth2_scheme)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+async def read_current_user(
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
-
-    user_service = UserService(db=db)
-    try:
-        return await user_service.get_current_user(token)
-    except InvalidTokenException:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    return current_user

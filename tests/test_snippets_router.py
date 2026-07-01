@@ -12,9 +12,8 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.dependencies import get_db
+from app.dependencies import get_current_user, get_db
 from app.models.users import User
-from app.routers import snippets as snippets_module
 from app.routers.snippets import router as snippets_router
 from app.db.base import Base
 import app.models.snippets  # noqa: F401
@@ -44,9 +43,7 @@ async def app_with_db():
     app = FastAPI()
     app.include_router(snippets_router, prefix="/api/snippets")
     app.dependency_overrides[get_db] = _get_db
-    app.dependency_overrides[
-        snippets_module.get_current_user_dependency
-    ] = _override_current_user
+    app.dependency_overrides[get_current_user] = _override_current_user
 
     # Seed a user row matching the stub id.
     async with session_factory() as session:
