@@ -9,9 +9,13 @@ from alembic import context
 
 from app.core.config import settings
 from app.db.base import Base
-from app.models.users import User
-from app.models.voice_messages import VoiceMessage
-from app.models.transcriptions import Transcription
+
+# Import models for their side effect of registering them with Base.metadata,
+# which Alembic uses for autogenerate support.
+from app.models.transcriptions import Transcription  # noqa: F401
+from app.models.users import User  # noqa: F401
+from app.models.voice_messages import VoiceMessage  # noqa: F401
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config

@@ -1,21 +1,14 @@
-from typing import Protocol
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.transcriptions import Transcription
 from app.models.voice_messages import VoiceMessage
 from app.schemas.Transcription import TranscriptionResponse
+from app.services.protocols import UploadLike
 from app.services.transcription import TranscriptionService
 
 
-class _HasRead(Protocol):
-    filename: str
-
-    async def read(self, _size: int = -1) -> bytes: ...
-
-
 class _InMemoryUpload:
-    """A UploadFile-like wrapper that returns a pre-read byte buffer."""
+    """An UploadFile-like wrapper that returns a pre-read byte buffer."""
 
     def __init__(self, filename: str, content: bytes) -> None:
         self.filename = filename
@@ -23,10 +16,6 @@ class _InMemoryUpload:
 
     async def read(self, _size: int = -1) -> bytes:
         return self._content
-
-    @property
-    def size(self) -> int:
-        return len(self._content)
 
 
 class TranscriptionCoordinator:
@@ -43,7 +32,7 @@ class TranscriptionCoordinator:
     async def process_audio(
         self,
         user_id: int,
-        file: _HasRead,
+        file: UploadLike,
         language: str,
         clean_enabled: bool,
         snippets_enabled: bool,

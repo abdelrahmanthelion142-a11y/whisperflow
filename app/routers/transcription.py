@@ -19,6 +19,16 @@ from app.services.transcription import TranscriptionService
 router = APIRouter()
 
 
+# Maps each service-layer exception to the HTTP status code the router returns.
+_EXCEPTION_STATUS_CODES = {
+    UnsupportedFormatException: status.HTTP_400_BAD_REQUEST,
+    InvalidLanguageException: status.HTTP_400_BAD_REQUEST,
+    AudioTooLongException: status.HTTP_400_BAD_REQUEST,
+    FileTooLargeException: status.HTTP_413_CONTENT_TOO_LARGE,
+    TranscriptionFailedException: status.HTTP_502_BAD_GATEWAY,
+}
+
+
 # NOTE: user_id=0 is a placeholder. Authentication/authorization is out of
 # scope for this issue; a future auth ticket will inject the current user.
 @router.post(
@@ -46,24 +56,9 @@ async def transcribe(
             clean_enabled=clean,
             snippets_enabled=snippets,
         )
-    except UnsupportedFormatException as exc:
+    except tuple(_EXCEPTION_STATUS_CODES) as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
-    except InvalidLanguageException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
-    except AudioTooLongException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
-    except FileTooLargeException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc)
-        ) from exc
-    except TranscriptionFailedException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
+            status_code=_EXCEPTION_STATUS_CODES[type(exc)],
+            detail=str(exc),
         ) from exc
 

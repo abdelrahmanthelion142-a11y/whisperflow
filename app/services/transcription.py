@@ -1,7 +1,6 @@
 import os
 import time
 from io import BytesIO
-from typing import Protocol
 
 from mutagen import File as MutagenFile
 
@@ -14,12 +13,7 @@ from app.services.exceptions import (
     TranscriptionFailedException,
     UnsupportedFormatException,
 )
-
-
-class _HasRead(Protocol):
-    filename: str
-
-    async def read(self, _size: int = -1) -> bytes: ...
+from app.services.protocols import UploadLike
 
 
 _ISO_639_1_CODES: set[str] = {
@@ -107,7 +101,7 @@ class TranscriptionService:
 
     async def transcribe_audio(
         self,
-        file: _HasRead,
+        file: UploadLike,
         language: str,
     ) -> TranscriptionResult:
         ext = self._validate_extension(file.filename)

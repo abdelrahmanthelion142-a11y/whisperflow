@@ -1,9 +1,13 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.voice_messages import VoiceMessage
 
 
 class Transcription(Base):
@@ -23,4 +27,4 @@ class Transcription(Base):
         DateTime, server_default=func.now(), nullable=False
     )
 
-    voice_message: Mapped["VoiceMessage"] = relationship(back_populates="transcription")  # type: ignore[name-defined]  # noqa: F821
+    voice_message: Mapped["VoiceMessage"] = relationship(back_populates="transcription")
