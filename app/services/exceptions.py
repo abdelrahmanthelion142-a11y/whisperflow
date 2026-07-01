@@ -23,3 +23,33 @@ class InvalidTokenException(Exception):
     """Raised when a JWT token is malformed, expired, or invalid."""
 
     pass
+
+
+class UnsupportedFormatException(Exception):
+    """Raised when the uploaded audio file has an unsupported extension."""
+
+    pass
+
+
+class FileTooLargeException(Exception):
+    """Raised when the uploaded audio file exceeds MAX_FILE_SIZE_MB."""
+
+    pass
+
+
+class AudioTooLongException(Exception):
+    """Raised when the uploaded audio file exceeds MAX_AUDIO_DURATION_SECS."""
+
+    pass
+
+
+class InvalidLanguageException(Exception):
+    """Raised when the requested language code is not ISO 639-1 or 'auto'."""
+
+    pass
+
+
+class TranscriptionFailedException(Exception):
+    """Raised when the Whisper API call fails."""
+
+    pass

@@ -17,7 +17,6 @@ def verify_password(plain_password, hashed_password) -> bool:
     return hash_function.verify(plain_password, hashed_password)
 
 
-from typing import Any
 
 def create_access_token(user_id: int, expires_delta: timedelta | None = None) -> str:
     if expires_delta:
