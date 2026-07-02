@@ -12,7 +12,10 @@ from app.db.base import Base
 
 # Import models for their side effect of registering them with Base.metadata,
 # which Alembic uses for autogenerate support.
+from app.models.cleanup_snippets import CleanupSnippet  # noqa: F401
+from app.models.cleanups import Cleanup  # noqa: F401
 from app.models.snippets import Snippet  # noqa: F401
+from app.models.transcription_snippets import TranscriptionSnippet  # noqa: F401
 from app.models.transcriptions import Transcription  # noqa: F401
 from app.models.users import User  # noqa: F401
 from app.models.voice_messages import VoiceMessage  # noqa: F401

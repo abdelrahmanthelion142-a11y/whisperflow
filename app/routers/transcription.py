@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.llm import llm_client
 from app.dependencies import get_db
 from app.schemas.Transcription import TranscriptionResponse
+from app.services.cleanup import CleanupService
 from app.services.coordinator import TranscriptionCoordinator
 from app.services.exceptions import (
     AudioTooLongException,
@@ -14,6 +15,7 @@ from app.services.exceptions import (
     TranscriptionFailedException,
     UnsupportedFormatException,
 )
+from app.services.snippets import SnippetService
 from app.services.transcription import TranscriptionService
 
 router = APIRouter()
@@ -44,8 +46,13 @@ async def transcribe(
     snippets: Annotated[bool, Form()] = True,
 ) -> TranscriptionResponse:
     transcription_service = TranscriptionService(whisper_client=llm_client)
+    snippet_service = SnippetService(db=db)
+    cleanup_service = CleanupService()
     coordinator = TranscriptionCoordinator(
-        db=db, transcription_service=transcription_service
+        db=db,
+        transcription_service=transcription_service,
+        snippet_service=snippet_service,
+        cleanup_service=cleanup_service,
     )
 
     try:

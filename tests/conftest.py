@@ -31,7 +31,10 @@ from app.main import app  # noqa: E402
 from app.models.users import User  # noqa: E402
 
 # Import model modules for their side effect of registering them with Base.metadata.
+from app.models import cleanup_snippets  # noqa: E402, F401
+from app.models import cleanups  # noqa: E402, F401
 from app.models import snippets  # noqa: E402, F401
+from app.models import transcription_snippets  # noqa: E402, F401
 from app.models import transcriptions  # noqa: E402, F401
 from app.models import voice_messages  # noqa: E402, F401
 

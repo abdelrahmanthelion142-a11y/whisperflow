@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.cleanups import Cleanup
     from app.models.transcriptions import Transcription
 
 
@@ -28,6 +29,11 @@ class VoiceMessage(Base):
     )
 
     transcription: Mapped["Transcription | None"] = relationship(
+        back_populates="voice_message",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    cleanup: Mapped["Cleanup | None"] = relationship(
         back_populates="voice_message",
         cascade="all, delete-orphan",
         uselist=False,
