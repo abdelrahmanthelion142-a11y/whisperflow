@@ -53,3 +53,15 @@ class TranscriptionFailedException(Exception):
     """Raised when the Whisper API call fails."""
 
     pass
+
+
+class SnippetNotFoundException(Exception):
+    """Raised when a snippet cannot be found for the given user."""
+
+    pass
+
+
+class DuplicateShortcutException(Exception):
+    """Raised when a snippet shortcut already exists for a user (active or archived)."""
+
+    pass

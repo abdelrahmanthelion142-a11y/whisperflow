@@ -1,3 +1,10 @@
+"""Shared test fixtures for the Whisperflow test suite.
+
+Uses an in-memory aiosqlite database per test so the test session never
+touches the real Postgres database.
+"""
+from __future__ import annotations
+
 import os
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -17,9 +24,16 @@ os.environ.setdefault("JWT_SECRET", "test-jwt-secret-key-for-testing-only")
 os.environ.setdefault("DATABASE_PASSWORD", "test-db-password")
 os.environ.setdefault("OPENAI_API_KEY", "test-openai-key")
 
+from app.core.security import hash_password  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.dependencies import get_db  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models.users import User  # noqa: E402
+
+# Import model modules for their side effect of registering them with Base.metadata.
+from app.models import snippets  # noqa: E402, F401
+from app.models import transcriptions  # noqa: E402, F401
+from app.models import voice_messages  # noqa: E402, F401
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -40,6 +54,19 @@ async def db_session(db_engine: Any) -> AsyncGenerator[AsyncSession, None]:
     )
     async with session_factory() as session:
         yield session
+
+
+@pytest_asyncio.fixture
+async def test_user(db_session: AsyncSession) -> User:
+    user = User(
+        username="tester",
+        email="tester@example.com",
+        password_hash=hash_password("supersecret123"),
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
 
 
 @pytest_asyncio.fixture

@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@ai-hero/sandcastle": "^0.12.0",
+    "zod": "^4.4.3"
+  },
+  "scripts": {
+    "typecheck": ".venv/bin/python -m mypy app tests",
+    "test": ".venv/bin/python -m pytest"
+  }
+}
