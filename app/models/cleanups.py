@@ -7,12 +7,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from app.models.transcription_snippets import TranscriptionSnippet
+    from app.models.cleanup_snippets import CleanupSnippet
     from app.models.voice_messages import VoiceMessage
 
 
-class Transcription(Base):
-    __tablename__ = "transcriptions"
+class Cleanup(Base):
+    __tablename__ = "cleanups"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     voice_message_id: Mapped[int] = mapped_column(
@@ -20,16 +20,15 @@ class Transcription(Base):
         unique=True,
         nullable=False,
     )
-    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
-    detected_language: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
+    cleaned_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     model: Mapped[str] = mapped_column(String(50), nullable=False)
+    latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
 
-    voice_message: Mapped["VoiceMessage"] = relationship(back_populates="transcription")
-    snippet_links: Mapped[list["TranscriptionSnippet"]] = relationship(
-        back_populates="transcription",
+    voice_message: Mapped["VoiceMessage"] = relationship(back_populates="cleanup")
+    snippet_links: Mapped[list["CleanupSnippet"]] = relationship(
+        back_populates="cleanup",
         cascade="all, delete-orphan",
     )

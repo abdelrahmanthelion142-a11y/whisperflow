@@ -20,6 +20,11 @@ class Settings(BaseSettings):
         ".ogg",
         ".mp4",
     }
+    CLEANUP_LLM_MODEL: str = "gpt-4o-mini"
+    LANGFUSE_PUBLIC_KEY: SecretStr = SecretStr("")
+    LANGFUSE_SECRET_KEY: SecretStr = SecretStr("")
+    LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+    CLEANUP_PROMPT_NAME: str = "whisperflow-cleanup"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
