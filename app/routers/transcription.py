@@ -2,9 +2,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.models.users import User
 from app.core.llm import llm_client
-from app.dependencies import get_db
+from app.dependencies import get_db, get_current_user
 from app.schemas.Transcription import TranscriptionResponse
 from app.services.cleanup import CleanupService
 from app.services.coordinator import TranscriptionCoordinator
@@ -31,8 +31,6 @@ _EXCEPTION_STATUS_CODES = {
 }
 
 
-# NOTE: user_id=0 is a placeholder. Authentication/authorization is out of
-# scope for this issue; a future auth ticket will inject the current user.
 @router.post(
     "/transcribe",
     response_model=TranscriptionResponse,
@@ -41,6 +39,7 @@ _EXCEPTION_STATUS_CODES = {
 async def transcribe(
     file: Annotated[UploadFile, File(...)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, get_current_user],
     language: Annotated[str, Form()] = "auto",
     clean: Annotated[bool, Form()] = False,
     snippets: Annotated[bool, Form()] = True,
@@ -57,7 +56,7 @@ async def transcribe(
 
     try:
         return await coordinator.process_audio(
-            user_id=0,
+            user_id=current_user.id,
             file=file,  # type: ignore[arg-type]
             language=language,
             clean_enabled=clean,
@@ -68,4 +67,3 @@ async def transcribe(
             status_code=_EXCEPTION_STATUS_CODES[type(exc)],
             detail=str(exc),
         ) from exc
-
