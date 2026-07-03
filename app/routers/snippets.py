@@ -12,7 +12,7 @@ from app.services.exceptions import (
 )
 from app.services.snippets import SnippetService
 
-router = APIRouter()
+router = APIRouter(prefix="/snippets")
 
 
 @router.post(

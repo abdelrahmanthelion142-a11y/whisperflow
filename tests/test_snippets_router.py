@@ -43,7 +43,7 @@ async def app_with_db():
             yield session
 
     app = FastAPI()
-    app.include_router(snippets_router, prefix="/api/snippets")
+    app.include_router(snippets_router, prefix="/api/v1")
     app.dependency_overrides[get_db] = _get_db
     app.dependency_overrides[get_current_user] = _override_current_user
 
@@ -73,7 +73,7 @@ async def client(app_with_db) -> AsyncGenerator[AsyncClient, None]:
 @pytest.mark.asyncio
 async def test_create_returns_snippet(client: AsyncClient) -> None:
     resp = await client.post(
-        "/api/snippets", json={"shortcut": "myemail", "expansion": "me@example.com"}
+        "/api/v1/snippets", json={"shortcut": "myemail", "expansion": "me@example.com"}
     )
 
     assert resp.status_code == 201, resp.text
@@ -87,12 +87,12 @@ async def test_create_returns_snippet(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_duplicate_shortcut_returns_409(client: AsyncClient) -> None:
     first = await client.post(
-        "/api/snippets", json={"shortcut": "addr", "expansion": "a@b.com"}
+        "/api/v1/snippets", json={"shortcut": "addr", "expansion": "a@b.com"}
     )
     assert first.status_code == 201
 
     dup = await client.post(
-        "/api/snippets", json={"shortcut": "addr", "expansion": "c@d.com"}
+        "/api/v1/snippets", json={"shortcut": "addr", "expansion": "c@d.com"}
     )
     assert dup.status_code == 409
 
@@ -100,18 +100,18 @@ async def test_duplicate_shortcut_returns_409(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_list_returns_only_active(client: AsyncClient) -> None:
     create = await client.post(
-        "/api/snippets", json={"shortcut": "k", "expansion": "keep"}
+        "/api/v1/snippets", json={"shortcut": "k", "expansion": "keep"}
     )
     drop = await client.post(
-        "/api/snippets", json={"shortcut": "d", "expansion": "drop"}
+        "/api/v1/snippets", json={"shortcut": "d", "expansion": "drop"}
     )
     assert create.status_code == 201
     assert drop.status_code == 201
 
-    delete = await client.delete(f"/api/snippets/{drop.json()['id']}")
+    delete = await client.delete(f"/api/v1/snippets/{drop.json()['id']}")
     assert delete.status_code == 204
 
-    listing = await client.get("/api/snippets")
+    listing = await client.get("/api/v1/snippets")
     assert listing.status_code == 200
     shortcuts = {s["shortcut"] for s in listing.json()}
     assert shortcuts == {"k"}
@@ -120,13 +120,13 @@ async def test_list_returns_only_active(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_update_changes_fields(client: AsyncClient) -> None:
     create = await client.post(
-        "/api/snippets",
+        "/api/v1/snippets",
         json={"shortcut": "old", "expansion": "old body"},
     )
     snippet_id = create.json()["id"]
 
     resp = await client.put(
-        f"/api/snippets/{snippet_id}",
+        f"/api/v1/snippets/{snippet_id}",
         json={"shortcut": "new", "expansion": "new body"},
     )
     assert resp.status_code == 200
@@ -137,25 +137,25 @@ async def test_update_changes_fields(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_update_missing_returns_404(client: AsyncClient) -> None:
-    resp = await client.put("/api/snippets/9999", json={"shortcut": "x"})
+    resp = await client.put("/api/v1/snippets/9999", json={"shortcut": "x"})
     assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_delete_archives_snippet(client: AsyncClient) -> None:
     create = await client.post(
-        "/api/snippets", json={"shortcut": "bye", "expansion": "b"}
+        "/api/v1/snippets", json={"shortcut": "bye", "expansion": "b"}
     )
     snippet_id = create.json()["id"]
 
-    resp = await client.delete(f"/api/snippets/{snippet_id}")
+    resp = await client.delete(f"/api/v1/snippets/{snippet_id}")
     assert resp.status_code == 204
 
-    listing = await client.get("/api/snippets")
+    listing = await client.get("/api/v1/snippets")
     assert all(s["id"] != snippet_id for s in listing.json())
 
 
 @pytest.mark.asyncio
 async def test_delete_missing_returns_404(client: AsyncClient) -> None:
-    resp = await client.delete("/api/snippets/9999")
+    resp = await client.delete("/api/v1/snippets/9999")
     assert resp.status_code == 404

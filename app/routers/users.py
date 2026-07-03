@@ -13,7 +13,7 @@ from app.services.exceptions import (
     InvalidCredentialsException,
 )
 
-router = APIRouter()
+router = APIRouter(prefix="/users")
 
 
 @router.post(

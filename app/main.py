@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 
 from app.db.database import engine
 from app.routers.transcription import router as TranscriptionRouter
@@ -17,8 +17,9 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.include_router(UserRouter, prefix="/api/users", tags=["users"])
-app.include_router(
-    TranscriptionRouter, prefix="/api/v1", tags=["transcription"]
-)
-app.include_router(SnippetRouter, prefix="/api/snippets", tags=["snippets"])
+api_v1_router = APIRouter(prefix="/api/v1")
+api_v1_router.include_router(UserRouter, tags=["users"])
+api_v1_router.include_router(TranscriptionRouter, tags=["transcription"])
+api_v1_router.include_router(SnippetRouter, tags=["snippets"])
+
+app.include_router(api_v1_router)
