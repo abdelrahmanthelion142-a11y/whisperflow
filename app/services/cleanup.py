@@ -55,6 +55,45 @@ def _try_load_langfuse_prompt() -> str:
     return str(compiled)
 
 
+def update_cleanup_prompt() -> bool:
+    """Update the Langfuse-managed whisperflow-cleanup prompt to match the fallback.
+
+    Creates a new version of the prompt with the text from _FALLBACK_SYSTEM_PROMPT
+    and labels it ``production`` so the deployed agent picks it up atomically.
+
+    Returns True on success, False if Langfuse is unavailable or unconfigured.
+    """
+    try:
+        from langfuse import get_client
+    except ImportError:
+        log.warning("langfuse package unavailable; cannot update cleanup prompt")
+        return False
+
+    public_key = settings.LANGFUSE_PUBLIC_KEY.get_secret_value()
+    secret_key = settings.LANGFUSE_SECRET_KEY.get_secret_value()
+    if not public_key or not secret_key:
+        log.warning("Langfuse credentials not configured; cannot update cleanup prompt")
+        return False
+
+    try:
+        client = get_client()
+        client.create_prompt(
+            name=settings.CLEANUP_PROMPT_NAME,
+            type="text",
+            prompt=_FALLBACK_SYSTEM_PROMPT,
+            labels=["production"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to update Langfuse prompt (%s)", exc)
+        return False
+
+    log.info(
+        "Updated Langfuse prompt '%s' to version labeled 'production'",
+        settings.CLEANUP_PROMPT_NAME,
+    )
+    return True
+
+
 class CleanupService:
     """Sends text to a Pydantic AI agent for cleanup."""
 
