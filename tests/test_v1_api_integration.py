@@ -24,8 +24,8 @@ details.
 from __future__ import annotations
 
 import wave
+from functools import partial
 from io import BytesIO
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -79,20 +79,6 @@ class _ScriptedCleanupService(CleanupService):
 
     async def _run_agent(self, text: str) -> str:
         return self._scripted
-
-
-def _scripted_cleanup_factory(cleaned_text: str) -> Any:
-    """Return a zero-arg callable that builds a ``_ScriptedCleanupService``.
-
-    The transcription router calls ``CleanupService()`` to construct a
-    service instance, so the monkeypatch target must be a callable
-    producing a service-compatible object.
-    """
-
-    def _factory() -> _ScriptedCleanupService:
-        return _ScriptedCleanupService(cleaned_text=cleaned_text)
-
-    return _factory
 
 
 @pytest_asyncio.fixture
@@ -184,7 +170,7 @@ async def test_v1_api_full_slice_end_to_end(monkeypatch, end_to_end_app):
         monkeypatch.setattr(
             transcription_module,
             "CleanupService",
-            _scripted_cleanup_factory("Second clip."),
+            partial(_ScriptedCleanupService, cleaned_text="Second clip."),
         )
         resp = await client.post(
             "/api/v1/transcribe",
