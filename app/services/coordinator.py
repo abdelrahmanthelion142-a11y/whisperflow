@@ -4,23 +4,21 @@ Composes the small single-purpose services into the full end-to-end
 dictation flow described in PRD #1 / issue #4:
 
 1. Validate + transcribe audio via :class:`TranscriptionService`.
-2. If snippets are enabled, fetch the user's active snippets and
-   pre-mask every detected trigger phrase with a ``⟦TOKEN⟧`` placeholder.
-3. If cleanup is enabled, send the masked text to
-   :class:`CleanupService` (which verifies snippet tokens survive).
-4. Post-swap: replace surviving tokens with their expansions, and
-   catch-all any trigger phrase the LLM silently rewrote.
+2. If snippets are enabled, fetch the user's active snippets.
+3. If cleanup is enabled, send the raw Whisper text to
+   :class:`CleanupService`.
+4. Snippet expansion via a single regex pass on the final string
+   (LLM output if cleanup ran, else raw Whisper text).
 5. Persist ``voice_messages``, ``transcriptions``, ``cleanups``, and
    the two junction tables (``transcription_snippets``,
    ``cleanup_snippets``).
-6. Return a :class:`TranscriptionResponse` with both the raw and
-   processed text.
+6. Return a :class:`TranscriptionResponse` with ``raw_text`` (literal
+   Whisper or snippet-expanded when cleanup is off) and ``cleaned_text``
+   (LLM output, optionally expanded, or ``None`` when cleanup is off).
 """
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cleanup_snippets import CleanupSnippet
@@ -35,8 +33,39 @@ from app.services.protocols import UploadLike
 from app.services.snippets import SnippetService
 from app.services.transcription import TranscriptionService
 
-if TYPE_CHECKING:
-    pass
+
+def _expand_snippets(
+    text: str,
+    snippets: list[Snippet],
+) -> tuple[str, list[int]]:
+    """Expand snippet shortcuts in *text*.
+
+    Returns ``(expanded_text, used_snippet_ids)``.
+
+    Overlapping shortcuts resolve leftmost-longest: at each position the
+    longest matching shortcut is expanded. A single ``re.sub`` pass with
+    alternation (longest alternatives first) ensures non-overlapping
+    leftmost-longest matching.
+    """
+    if not snippets:
+        return text, []
+
+    ordered = sorted(snippets, key=lambda s: len(s.shortcut), reverse=True)
+    parts = [re.escape(s.shortcut) for s in ordered]
+    pattern = re.compile(rf"\b({'|'.join(parts)})\b", re.IGNORECASE)
+
+    snippet_by_lower: dict[str, Snippet] = {s.shortcut.lower(): s for s in snippets}
+    used_ids: list[int] = []
+
+    def _replacer(m: re.Match) -> str:
+        key = m.group(0).lower()
+        snippet = snippet_by_lower[key]
+        if snippet.id not in used_ids:
+            used_ids.append(snippet.id)
+        return snippet.expansion
+
+    expanded = pattern.sub(_replacer, text)
+    return expanded, used_ids
 
 
 class _InMemoryUpload:
@@ -84,46 +113,36 @@ class TranscriptionCoordinator:
         )
         raw_text = result.text
 
-        # 2. Snippet pre-mask
+        # 2. Fetch active snippets if enabled
         active_snippets: list[Snippet] = []
         if snippets_enabled:
             active_snippets = await self.snippet_service.list_all_active(
                 user_id=user_id
             )
 
-        (
-            masked_text,
-            token_to_snippet,
-            used_snippet_ids,
-        ) = self._pre_mask(raw_text, active_snippets)
-        expected_tokens = list(token_to_snippet.keys())
-
-        # 3. Cleanup (LLM call)
+        # 3. Cleanup (LLM call) — receives raw Whisper text (no pre-mask)
         cleanup_result: CleanupResult | None = None
         if clean_enabled:
-            cleanup_result = await self.cleanup_service.clean(
-                masked_text, expected_tokens
-            )
+            cleanup_result = await self.cleanup_service.clean(raw_text)
 
-        # 4. Post-swap
+        # 4. Determine response fields and which snippets were used
+        response_raw_text: str = raw_text
         cleaned_text: str | None = None
+        used_snippet_ids: list[int] = []
+
         if cleanup_result is not None:
-            cleaned_text = self._post_swap(
-                cleanup_result.cleaned_text,
-                active_snippets,
-                used_snippet_ids,
-                token_to_snippet,
-            )
-        elif snippets_enabled:
-            # No LLM, but snippets were requested. Apply the post-swap
-            # to the raw text so we still surface a "processed" string
-            # to the user (even if no expansion matched).
-            cleaned_text = self._post_swap(
-                raw_text,
-                active_snippets,
-                used_snippet_ids,
-                token_to_snippet,
-            )
+            if snippets_enabled:
+                swapped, used_snippet_ids = _expand_snippets(
+                    cleanup_result.cleaned_text, active_snippets
+                )
+                cleaned_text = swapped
+            else:
+                cleaned_text = cleanup_result.cleaned_text
+        else:
+            if snippets_enabled:
+                response_raw_text, used_snippet_ids = _expand_snippets(
+                    raw_text, active_snippets
+                )
 
         # 5. Persist
         voice_message = VoiceMessage(
@@ -140,12 +159,12 @@ class TranscriptionCoordinator:
 
         transcription = Transcription(
             voice_message_id=voice_message.id,
-            raw_text=raw_text,
+            raw_text=raw_text,  # Always literal Whisper output
             detected_language=result.language,
             latency_ms=result.latency_ms,
             model=TranscriptionService.MODEL_NAME,
         )
-        if used_snippet_ids:
+        if active_snippets and used_snippet_ids:
             transcription.snippet_links = [
                 TranscriptionSnippet(snippet_id=sid) for sid in used_snippet_ids
             ]
@@ -159,7 +178,7 @@ class TranscriptionCoordinator:
                 model=cleanup_result.model,
                 latency_ms=cleanup_result.latency_ms,
             )
-            if used_snippet_ids:
+            if active_snippets and used_snippet_ids:
                 cleanup.snippet_links = [
                     CleanupSnippet(snippet_id=sid) for sid in used_snippet_ids
                 ]
@@ -171,71 +190,9 @@ class TranscriptionCoordinator:
         # 6. Return
         return TranscriptionResponse(
             success=True,
-            raw_text=raw_text,
+            raw_text=response_raw_text,
             cleaned_text=cleaned_text,
             detected_language=result.language,
             audio_duration_secs=result.duration_secs,
             latency_ms=result.latency_ms,
         )
-
-    @staticmethod
-    def _pre_mask(
-        text: str,
-        snippets: list[Snippet],
-    ) -> tuple[str, dict[str, Snippet], list[int]]:
-        """Replace each detected snippet trigger with a ``⟦TOKEN⟧``.
-
-        Returns:
-            masked_text: the text with triggers replaced by tokens
-            token_to_snippet: ordered mapping from token placeholder to
-                the :class:`Snippet` whose expansion belongs there
-            used_snippet_ids: snippet IDs that were masked, in order
-        """
-        # Process longer shortcuts first so "myemail" wins over "my".
-        ordered = sorted(
-            snippets, key=lambda s: len(s.shortcut), reverse=True
-        )
-        token_to_snippet: dict[str, Snippet] = {}
-        used_snippet_ids: list[int] = []
-        masked = text
-        token_idx = 0
-        for snippet in ordered:
-            pattern = re.compile(
-                rf"\b{re.escape(snippet.shortcut)}\b", re.IGNORECASE
-            )
-            if not pattern.search(masked):
-                continue
-            token = f"⟦TOKEN{token_idx}⟧"
-            token_to_snippet[token] = snippet
-            used_snippet_ids.append(snippet.id)
-            masked = pattern.sub(token, masked)
-            token_idx += 1
-        return masked, token_to_snippet, used_snippet_ids
-
-    @staticmethod
-    def _post_swap(
-        text: str,
-        snippets: list[Snippet],
-        used_snippet_ids: list[int],
-        token_to_snippet: dict[str, Snippet],
-    ) -> str:
-        """Replace surviving ``⟦TOKEN⟧`` placeholders with expansions.
-
-        Also performs a catch-all pass: for every snippet that was
-        detected in the input, look for the trigger phrase in the
-        post-LLM text (the LLM may have silently corrected the
-        shortcut to a more natural form) and replace any remaining
-        occurrence with the expansion.
-        """
-        result = text
-        for token, snippet in token_to_snippet.items():
-            if token in result:
-                result = result.replace(token, snippet.expansion, 1)
-
-        used_snippets = [s for s in snippets if s.id in set(used_snippet_ids)]
-        for snippet in used_snippets:
-            pattern = re.compile(
-                rf"\b{re.escape(snippet.shortcut)}\b", re.IGNORECASE
-            )
-            result = pattern.sub(snippet.expansion, result)
-        return result

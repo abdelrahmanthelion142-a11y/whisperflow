@@ -77,7 +77,7 @@ class _StubCleanupService(CleanupService):
     """CleanupService subclass that returns a scripted output for testing."""
 
     def __init__(self, cleaned_text: str, model: str = "test-cleanup-model") -> None:
-        super().__init__(model=model, max_retries=0)
+        super().__init__(model=model)
         self._scripted = cleaned_text
         self.calls: list[str] = []
 
@@ -346,10 +346,10 @@ async def test_pipeline_snippets_true_without_clean_expands_in_raw(db_session):
         snippets_enabled=True,
     )
 
-    # raw_text remains the Whisper output
-    assert result.raw_text == "send mail to myemail please"
-    # cleaned_text is the snippet-expanded text
-    assert result.cleaned_text == "send mail to alice@example.com please"
+    # raw_text shows the snippet-expanded version
+    assert result.raw_text == "send mail to alice@example.com please"
+    # cleaned_text is None since cleanup was disabled
+    assert result.cleaned_text is None
     # Cleanup LLM was NOT called
     assert cleanup.calls == []
 
@@ -368,75 +368,9 @@ async def test_pipeline_snippets_true_without_clean_expands_in_raw(db_session):
     ).scalar_one()
     assert snippet.shortcut == "myemail"
 
-
-async def test_pipeline_clean_and_snippets_full_flow(db_session):
-    user = await _make_user_in_session(db_session)
-    await _seed_snippet(db_session, user, "myemail", "alice@example.com")
-    await db_session.commit()
-
-    # LLM correctly preserves the masked token, then we swap it out.
-    coordinator, _, cleanup = _build_coordinator(
-        db_session,
-        whisper_text="send mail to myemail please",
-        cleaned_text="Send mail to ⟦TOKEN0⟧ please.",
-    )
-
-    upload = _FakeUpload("clip.mp3", b"x" * 16)
-    result = await coordinator.process_audio(
-        user_id=user.id,
-        file=upload,  # type: ignore[arg-type]
-        language="auto",
-        clean_enabled=True,
-        snippets_enabled=True,
-    )
-
-    assert result.raw_text == "send mail to myemail please"
-    assert result.cleaned_text == "Send mail to alice@example.com please."
-    # Cleanup LLM was called with the masked text
-    assert cleanup.calls == ["send mail to ⟦TOKEN0⟧ please"]
-
-    cleanup_rows = (await db_session.execute(select(Cleanup))).scalars().all()
-    assert len(cleanup_rows) == 1
-    assert cleanup_rows[0].cleaned_text == "Send mail to alice@example.com please."
-
-    # Junction records: one for transcription, one for cleanup
-    tx_links = (
-        await db_session.execute(select(TranscriptionSnippet))
-    ).scalars().all()
-    assert len(tx_links) == 1
-
-    cleanup_links = (
-        await db_session.execute(select(CleanupSnippet))
-    ).scalars().all()
-    assert len(cleanup_links) == 1
-
-
-async def test_pipeline_post_swap_catchall_handles_corrected_trigger(db_session):
-    """LLM may rewrite the trigger phrase (e.g. 'myemail' → 'my email'); the
-    post-swap catch-all still expands any remaining occurrence of the
-    trigger phrase that the LLM reintroduced verbatim."""
-    user = await _make_user_in_session(db_session)
-    await _seed_snippet(db_session, user, "myemail", "alice@example.com")
-    await db_session.commit()
-
-    # LLM drops the token entirely and the cleaned text contains the
-    # original trigger phrase verbatim — catch-all must expand it.
-    coordinator, _, _ = _build_coordinator(
-        db_session,
-        whisper_text="send mail to myemail please",
-        cleaned_text="Send mail to myemail please.",
-    )
-
-    upload = _FakeUpload("clip.mp3", b"x" * 16)
-    result = await coordinator.process_audio(
-        user_id=user.id,
-        file=upload,  # type: ignore[arg-type]
-        language="auto",
-        clean_enabled=True,
-        snippets_enabled=True,
-    )
-
-    assert result.cleaned_text == "Send mail to alice@example.com please."
+    # transcription.raw_text always holds the literal Whisper output
+    tx = (await db_session.execute(select(Transcription))).scalar_one()
+    assert tx.raw_text == "send mail to myemail please"
 
 
 async def test_pipeline_archived_snippets_are_not_expanded(db_session):
@@ -463,8 +397,9 @@ async def test_pipeline_archived_snippets_are_not_expanded(db_session):
         snippets_enabled=True,
     )
 
-    # Archived snippet is NOT expanded; raw text is returned as-is.
-    assert result.cleaned_text == "press newkey now"
+    # Archived snippet is NOT expanded; raw text is the literal Whisper output.
+    assert result.raw_text == "press newkey now"
+    assert result.cleaned_text is None
 
 
 async def test_pipeline_snippets_scoped_to_current_user(db_session):
@@ -493,7 +428,8 @@ async def test_pipeline_snippets_scoped_to_current_user(db_session):
     )
 
     # Other user's snippet must not leak.
-    assert result.cleaned_text == "send to myemail"
+    assert result.raw_text == "send to myemail"
+    assert result.cleaned_text is None
 
 
 async def test_pipeline_response_has_no_cleaned_text_when_both_disabled(db_session):
@@ -537,7 +473,8 @@ async def test_pipeline_overlapping_shortcuts_use_longest_match(db_session):
     )
 
     # The longer shortcut wins; the "my" snippet is not consumed.
-    assert result.cleaned_text == "hi alice@example.com"
+    assert result.raw_text == "hi alice@example.com"
+    assert result.cleaned_text is None
 
     tx_links = (
         await db_session.execute(select(TranscriptionSnippet))

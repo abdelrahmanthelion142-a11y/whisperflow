@@ -7,9 +7,7 @@ scoping can be validated end-to-end.
 from __future__ import annotations
 
 import pytest
-import pytest_asyncio
 
-from app.models.snippets import Snippet
 from app.models.users import User
 from app.services.exceptions import (
     DuplicateShortcutException,
