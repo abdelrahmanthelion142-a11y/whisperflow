@@ -41,9 +41,8 @@ class VoiceMessageService:
         if not voice_messages:
             return [], next_cursor
 
-        voice_message_ids = [vm.id for vm in voice_messages]
         transcriptions_by_id, cleanups_by_id = await self._load_related(
-            voice_message_ids
+            [vm.id for vm in voice_messages]
         )
 
         items = [

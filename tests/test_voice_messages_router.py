@@ -120,22 +120,13 @@ async def _seed_full_voice_message(
     raw_text: str,
     cleaned_text: str,
 ) -> int:
+    vm_id = await _seed_voice_message(
+        session_factory, user_id=user_id, filename=filename
+    )
     async with session_factory() as session:
-        vm = VoiceMessage(
-            user_id=user_id,
-            filename=filename,
-            language="en",
-            snippets_enabled=True,
-            clean_enabled=True,
-            file_size_bytes=1024,
-            audio_duration_secs=1.0,
-        )
-        session.add(vm)
-        await session.commit()
-        await session.refresh(vm)
         session.add(
             Transcription(
-                voice_message_id=vm.id,
+                voice_message_id=vm_id,
                 raw_text=raw_text,
                 detected_language="en",
                 latency_ms=10.0,
@@ -144,14 +135,14 @@ async def _seed_full_voice_message(
         )
         session.add(
             Cleanup(
-                voice_message_id=vm.id,
+                voice_message_id=vm_id,
                 cleaned_text=cleaned_text,
                 model="gpt-4o-mini",
                 latency_ms=20.0,
             )
         )
         await session.commit()
-        return vm.id
+    return vm_id
 
 
 async def _attach_transcription(
