@@ -67,7 +67,7 @@ async def test_duplicate_shortcut_blocked_after_archive(
 
 
 @pytest.mark.asyncio
-async def test_get_active_excludes_archived(
+async def test_list_paginated_excludes_archived(
     db_session, test_user: User
 ) -> None:
     service = SnippetService(db=db_session)
@@ -79,15 +79,18 @@ async def test_get_active_excludes_archived(
     )
     await service.archive_snippet(user_id=test_user.id, snippet_id=drop.id)
 
-    active = await service.get_active(user_id=test_user.id)
+    items, next_cursor = await service.list_paginated(
+        user_id=test_user.id, cursor=None, size=20
+    )
 
-    ids = {s.id for s in active}
+    ids = {s.id for s in items}
     assert keep.id in ids
     assert drop.id not in ids
+    assert next_cursor is None
 
 
 @pytest.mark.asyncio
-async def test_get_active_scopes_to_user(
+async def test_list_paginated_scopes_to_user(
     db_session, test_user: User
 ) -> None:
     other = User(
@@ -107,11 +110,46 @@ async def test_get_active_scopes_to_user(
         user_id=other.id, shortcut="theirs", expansion="t"
     )
 
-    mine_active = await service.get_active(user_id=test_user.id)
-    theirs_active = await service.get_active(user_id=other.id)
+    mine_items, _ = await service.list_paginated(
+        user_id=test_user.id, cursor=None, size=20
+    )
+    theirs_items, _ = await service.list_paginated(
+        user_id=other.id, cursor=None, size=20
+    )
 
-    assert {s.id for s in mine_active} == {mine.id}
-    assert {s.id for s in theirs_active} == {theirs.id}
+    assert {s.id for s in mine_items} == {mine.id}
+    assert {s.id for s in theirs_items} == {theirs.id}
+
+
+@pytest.mark.asyncio
+async def test_list_paginated_returns_newest_first_with_cursor(
+    db_session, test_user: User
+) -> None:
+    service = SnippetService(db=db_session)
+    created: list[int] = []
+    for i in range(5):
+        snippet = await service.create_snippet(
+            user_id=test_user.id, shortcut=f"k{i}", expansion=f"v{i}"
+        )
+        created.append(snippet.id)
+
+    first_page, next_cursor = await service.list_paginated(
+        user_id=test_user.id, cursor=None, size=2
+    )
+    assert [s.id for s in first_page] == [created[-1], created[-2]]
+    assert next_cursor == created[-2]
+
+    second_page, end_cursor = await service.list_paginated(
+        user_id=test_user.id, cursor=next_cursor, size=2
+    )
+    assert [s.id for s in second_page] == [created[-3], created[-4]]
+    assert end_cursor == created[-4]
+
+    final_page, end_cursor = await service.list_paginated(
+        user_id=test_user.id, cursor=end_cursor, size=2
+    )
+    assert [s.id for s in final_page] == [created[-5]]
+    assert end_cursor is None
 
 
 @pytest.mark.asyncio
@@ -162,9 +200,11 @@ async def test_archive_snippet_soft_deletes(
     )
     assert archived is not None
     assert archived.archived is True
-    assert snippet.id not in {
-        s.id for s in await service.get_active(user_id=test_user.id)
-    }
+
+    items, _ = await service.list_paginated(
+        user_id=test_user.id, cursor=None, size=20
+    )
+    assert snippet.id not in {s.id for s in items}
 
 
 @pytest.mark.asyncio

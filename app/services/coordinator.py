@@ -87,7 +87,7 @@ class TranscriptionCoordinator:
         # 2. Snippet pre-mask
         active_snippets: list[Snippet] = []
         if snippets_enabled:
-            active_snippets = await self.snippet_service.get_active(
+            active_snippets = await self.snippet_service.list_all_active(
                 user_id=user_id
             )
 

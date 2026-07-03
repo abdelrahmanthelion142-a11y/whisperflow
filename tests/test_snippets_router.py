@@ -113,7 +113,10 @@ async def test_list_returns_only_active(client: AsyncClient) -> None:
 
     listing = await client.get("/api/v1/snippets")
     assert listing.status_code == 200
-    shortcuts = {s["shortcut"] for s in listing.json()}
+    body = listing.json()
+    assert "items" in body
+    assert "next_cursor" in body
+    shortcuts = {s["shortcut"] for s in body["items"]}
     assert shortcuts == {"k"}
 
 
@@ -152,10 +155,70 @@ async def test_delete_archives_snippet(client: AsyncClient) -> None:
     assert resp.status_code == 204
 
     listing = await client.get("/api/v1/snippets")
-    assert all(s["id"] != snippet_id for s in listing.json())
+    assert all(s["id"] != snippet_id for s in listing.json()["items"])
 
 
 @pytest.mark.asyncio
 async def test_delete_missing_returns_404(client: AsyncClient) -> None:
     resp = await client.delete("/api/v1/snippets/9999")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_returns_envelope_with_default_size(
+    client: AsyncClient,
+) -> None:
+    for i in range(3):
+        await client.post(
+            "/api/v1/snippets",
+            json={"shortcut": f"k{i}", "expansion": f"v{i}"},
+        )
+
+    resp = await client.get("/api/v1/snippets")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body.keys()) == {"items", "next_cursor"}
+    assert len(body["items"]) == 3
+    assert body["next_cursor"] is None
+    assert [s["shortcut"] for s in body["items"]] == ["k2", "k1", "k0"]
+
+
+@pytest.mark.asyncio
+async def test_list_paginates_with_cursor(client: AsyncClient) -> None:
+    created_ids: list[int] = []
+    for i in range(4):
+        post = await client.post(
+            "/api/v1/snippets",
+            json={"shortcut": f"k{i}", "expansion": f"v{i}"},
+        )
+        created_ids.append(post.json()["id"])
+
+    first = await client.get("/api/v1/snippets", params={"size": 2})
+    assert first.status_code == 200
+    body = first.json()
+    assert [s["id"] for s in body["items"]] == [created_ids[-1], created_ids[-2]]
+    assert body["next_cursor"] == created_ids[-2]
+
+    second = await client.get(
+        "/api/v1/snippets",
+        params={"size": 2, "cursor": body["next_cursor"]},
+    )
+    assert second.status_code == 200
+    body2 = second.json()
+    assert [s["id"] for s in body2["items"]] == [created_ids[-3], created_ids[-4]]
+    assert body2["next_cursor"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_caps_size_at_20(client: AsyncClient) -> None:
+    for i in range(25):
+        await client.post(
+            "/api/v1/snippets",
+            json={"shortcut": f"k{i:02d}", "expansion": f"v{i}"},
+        )
+
+    resp = await client.get("/api/v1/snippets", params={"size": 1000})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["items"]) == 20
+    assert body["next_cursor"] is not None
