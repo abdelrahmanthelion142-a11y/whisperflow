@@ -20,13 +20,7 @@ def _fake_langfuse_module():
         sys.modules.pop("langfuse", None)
 
 
-def test_update_prompt_creates_version_with_fallback_text(monkeypatch):
-    """update_cleanup_prompt must call create_prompt with _FALLBACK_SYSTEM_PROMPT."""
-    import langfuse
-
-    mock_client = MagicMock()
-    langfuse.get_client.return_value = mock_client
-
+def _patch_valid_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "app.services.cleanup.settings.LANGFUSE_PUBLIC_KEY",
         MagicMock(get_secret_value=lambda: "pk-test"),
@@ -35,6 +29,15 @@ def test_update_prompt_creates_version_with_fallback_text(monkeypatch):
         "app.services.cleanup.settings.LANGFUSE_SECRET_KEY",
         MagicMock(get_secret_value=lambda: "sk-test"),
     )
+
+
+def test_update_prompt_creates_version_with_fallback_text(monkeypatch):
+    """update_cleanup_prompt must call create_prompt with _FALLBACK_SYSTEM_PROMPT."""
+    import langfuse
+
+    _patch_valid_credentials(monkeypatch)
+    mock_client = MagicMock()
+    langfuse.get_client.return_value = mock_client
     monkeypatch.setattr(
         "app.services.cleanup.settings.CLEANUP_PROMPT_NAME",
         "whisperflow-cleanup",
@@ -61,16 +64,8 @@ def test_update_prompt_returns_false_on_langfuse_error(monkeypatch):
     """When Langfuse raises, update_cleanup_prompt must return False."""
     import langfuse
 
+    _patch_valid_credentials(monkeypatch)
     langfuse.get_client.side_effect = RuntimeError("unreachable")
-
-    monkeypatch.setattr(
-        "app.services.cleanup.settings.LANGFUSE_PUBLIC_KEY",
-        MagicMock(get_secret_value=lambda: "pk-test"),
-    )
-    monkeypatch.setattr(
-        "app.services.cleanup.settings.LANGFUSE_SECRET_KEY",
-        MagicMock(get_secret_value=lambda: "sk-test"),
-    )
 
     result = update_cleanup_prompt()
     assert result is False
@@ -80,18 +75,10 @@ def test_update_prompt_returns_false_on_create_prompt_error(monkeypatch):
     """When create_prompt raises, update_cleanup_prompt must return False."""
     import langfuse
 
+    _patch_valid_credentials(monkeypatch)
     mock_client = MagicMock()
     mock_client.create_prompt.side_effect = RuntimeError("api error")
     langfuse.get_client.return_value = mock_client
-
-    monkeypatch.setattr(
-        "app.services.cleanup.settings.LANGFUSE_PUBLIC_KEY",
-        MagicMock(get_secret_value=lambda: "pk-test"),
-    )
-    monkeypatch.setattr(
-        "app.services.cleanup.settings.LANGFUSE_SECRET_KEY",
-        MagicMock(get_secret_value=lambda: "sk-test"),
-    )
 
     result = update_cleanup_prompt()
     assert result is False

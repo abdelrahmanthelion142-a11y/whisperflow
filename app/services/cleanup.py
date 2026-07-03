@@ -24,22 +24,34 @@ _FALLBACK_SYSTEM_PROMPT = (
 )
 
 
-def _try_load_langfuse_prompt() -> str:
-    """Return the Langfuse-managed cleanup prompt, falling back gracefully."""
+def _get_langfuse_client() -> Any | None:
+    """Return a Langfuse client or None if unavailable/unconfigured."""
     try:
         from langfuse import get_client
     except ImportError:
-        log.warning("langfuse package unavailable; using fallback cleanup prompt")
-        return _FALLBACK_SYSTEM_PROMPT
+        log.warning("langfuse package unavailable")
+        return None
 
     public_key = settings.LANGFUSE_PUBLIC_KEY.get_secret_value()
     secret_key = settings.LANGFUSE_SECRET_KEY.get_secret_value()
     if not public_key or not secret_key:
-        log.warning("Langfuse credentials not configured; using fallback prompt")
+        log.warning("Langfuse credentials not configured")
+        return None
+
+    try:
+        return get_client()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Langfuse unavailable (%s)", exc)
+        return None
+
+
+def _try_load_langfuse_prompt() -> str:
+    """Return the Langfuse-managed cleanup prompt, falling back gracefully."""
+    client = _get_langfuse_client()
+    if client is None:
         return _FALLBACK_SYSTEM_PROMPT
 
     try:
-        client = get_client()
         if not client.auth_check():
             log.warning("Langfuse auth check failed; using fallback prompt")
             return _FALLBACK_SYSTEM_PROMPT
@@ -56,27 +68,18 @@ def _try_load_langfuse_prompt() -> str:
 
 
 def update_cleanup_prompt() -> bool:
-    """Update the Langfuse-managed whisperflow-cleanup prompt to match the fallback.
+    """Update the Langfuse-managed cleanup prompt to match the fallback.
 
     Creates a new version of the prompt with the text from _FALLBACK_SYSTEM_PROMPT
     and labels it ``production`` so the deployed agent picks it up atomically.
 
     Returns True on success, False if Langfuse is unavailable or unconfigured.
     """
-    try:
-        from langfuse import get_client
-    except ImportError:
-        log.warning("langfuse package unavailable; cannot update cleanup prompt")
-        return False
-
-    public_key = settings.LANGFUSE_PUBLIC_KEY.get_secret_value()
-    secret_key = settings.LANGFUSE_SECRET_KEY.get_secret_value()
-    if not public_key or not secret_key:
-        log.warning("Langfuse credentials not configured; cannot update cleanup prompt")
+    client = _get_langfuse_client()
+    if client is None:
         return False
 
     try:
-        client = get_client()
         client.create_prompt(
             name=settings.CLEANUP_PROMPT_NAME,
             type="text",
