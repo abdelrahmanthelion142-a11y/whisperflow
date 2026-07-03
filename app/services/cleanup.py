@@ -1,15 +1,6 @@
 """LLM cleanup service backed by a Pydantic AI agent.
 
-Implements the three-step snippet pipeline described in PRD #1 / issue #4:
-
-1. The coordinator passes a list of expected ``⟦TOKEN⟧`` placeholders
-   that were already substituted into the masked text.
-2. ``CleanupService.clean`` invokes the agent, then checks the output
-   to confirm every expected token survived. Missing tokens trigger
-   automatic retries.
-3. The coordinator performs the final ``⟦TOKEN⟧`` → expansion swap
-   (and the catch-all replacement for any trigger phrases the LLM
-   silently corrected).
+Receives raw Whisper text and returns the LLM's cleaned version.
 
 Langfuse is used to manage the cleanup system prompt in production.
 If Langfuse is unreachable or unconfigured, the service logs a warning
@@ -19,22 +10,17 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from app.core.config import settings
 from app.schemas.Transcription import CleanupResult
-
-if TYPE_CHECKING:
-    pass
 
 log = logging.getLogger(__name__)
 
 
 _FALLBACK_SYSTEM_PROMPT = (
     "You are a dictation cleanup assistant. Fix grammar and punctuation in the "
-    "user's transcribed text. CRITICAL: do not modify, remove, or replace any "
-    "text matching the pattern '⟦TOKEN⟧' — these are user-defined snippet "
-    "placeholders that must survive verbatim. Return only the cleaned text."
+    "user's transcribed text. Return only the cleaned text."
 )
 
 
@@ -70,11 +56,10 @@ def _try_load_langfuse_prompt() -> str:
 
 
 class CleanupService:
-    """Sends masked text to a Pydantic AI agent and validates snippet tokens."""
+    """Sends text to a Pydantic AI agent for cleanup."""
 
-    def __init__(self, model: str | None = None, max_retries: int = 2) -> None:
+    def __init__(self, model: str | None = None) -> None:
         self._model_name = model or settings.CLEANUP_LLM_MODEL
-        self._max_retries = max_retries
         self._agent: Any = None
 
     def _build_agent(self) -> Any:
@@ -94,67 +79,13 @@ class CleanupService:
         result = await self._agent.run(text)
         return str(result.output)
 
-    async def clean(
-        self,
-        text: str,
-        expected_tokens: list[str] | None = None,
-    ) -> CleanupResult:
-        """Run the LLM cleanup and verify snippet tokens survive.
-
-        ``expected_tokens`` is an ordered list of ``⟦TOKEN⟧`` placeholders
-        the coordinator substituted into the text before the call. Each
-        token is verified sequentially in order: a token that survives
-        in the output is stripped from the output (and the tracking list)
-        before the next token is checked. This means a token expected
-        N times must appear N times in the output, even if multiple
-        snippets share the same shortcut.
-
-        Missing tokens trigger up to ``max_retries`` retries of the LLM
-        call. If a token is still missing after all retries, the cleaned
-        text is returned as-is — the post-swap will be a no-op for that
-        snippet.
-        """
-        expected = list(expected_tokens or [])
-
+    async def clean(self, text: str) -> CleanupResult:
+        """Run the LLM cleanup and return the result."""
         start = time.perf_counter()
         cleaned = await self._run_agent(text)
-        for attempt in range(self._max_retries):
-            if not expected:
-                break
-            missing = self._consume_tokens(cleaned, expected)
-            if not missing:
-                break
-            log.warning(
-                "Cleanup LLM corrupted %d snippet token(s) on attempt %d; retrying",
-                len(missing),
-                attempt + 1,
-            )
-            cleaned = await self._run_agent(text)
         latency_ms = (time.perf_counter() - start) * 1000.0
         return CleanupResult(
             cleaned_text=cleaned,
             latency_ms=latency_ms,
             model=self._model_name,
         )
-
-    @staticmethod
-    def _consume_tokens(text: str, expected: list[str]) -> list[str]:
-        """Strip confirmed tokens from ``text`` and ``expected``.
-
-        Returns the list of tokens that could not be confirmed in the
-        text. For each expected token, in order: if the token is in
-        the text, one occurrence is removed and the token is dropped
-        from the missing list; otherwise the token is reported as
-        missing and remains in the tracking list (so the caller can
-        retry).
-        """
-        missing: list[str] = []
-        remaining: list[str] = []
-        for token in expected:
-            if token in text:
-                text = text.replace(token, "", 1)
-            else:
-                missing.append(token)
-                remaining.append(token)
-        expected[:] = remaining
-        return missing

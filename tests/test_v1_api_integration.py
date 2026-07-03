@@ -74,7 +74,7 @@ class _ScriptedCleanupService(CleanupService):
     """CleanupService subclass whose ``_run_agent`` returns a scripted output."""
 
     def __init__(self, cleaned_text: str) -> None:
-        super().__init__(max_retries=0)
+        super().__init__()
         self._scripted = cleaned_text
 
     async def _run_agent(self, text: str) -> str:
