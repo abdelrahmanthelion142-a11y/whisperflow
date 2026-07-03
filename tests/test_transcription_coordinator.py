@@ -373,9 +373,6 @@ async def test_pipeline_snippets_true_without_clean_expands_in_raw(db_session):
     assert tx.raw_text == "send mail to myemail please"
 
 
-
-
-
 async def test_pipeline_archived_snippets_are_not_expanded(db_session):
     user = await _make_user_in_session(db_session)
     snippet = await _seed_snippet(db_session, user, "newkey", "new-value")

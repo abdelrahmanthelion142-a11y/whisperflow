@@ -19,8 +19,6 @@ dictation flow described in PRD #1 / issue #4:
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cleanup_snippets import CleanupSnippet
@@ -34,9 +32,6 @@ from app.services.cleanup import CleanupService
 from app.services.protocols import UploadLike
 from app.services.snippets import SnippetService
 from app.services.transcription import TranscriptionService
-
-if TYPE_CHECKING:
-    pass
 
 
 def _expand_snippets(
