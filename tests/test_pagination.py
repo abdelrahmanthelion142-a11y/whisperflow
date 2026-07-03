@@ -8,50 +8,24 @@ exist, otherwise ``None``.
 """
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
-
 import pytest
 import pytest_asyncio
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import Page, paginate
-from app.db.base import Base
 from app.models.snippets import Snippet
-import app.models.snippets  # noqa: F401  (register Snippet with Base.metadata)
-from app.models.users import User  # noqa: F401
+from app.models.users import User
 
 
 @pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    session_factory = async_sessionmaker(
-        bind=engine, expire_on_commit=False, class_=AsyncSession
-    )
-    async with session_factory() as session:
-        yield session
-    await engine.dispose()
-
-
-@pytest_asyncio.fixture
-async def seeded(db_session: AsyncSession) -> list[int]:
-    user = User(
-        username="tester", email="tester@example.com", password_hash="x"
-    )
-    db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
-
+async def seeded(
+    db_session: AsyncSession, test_user: User
+) -> list[int]:
     created_ids: list[int] = []
     for i in range(5):
         snippet = Snippet(
-            user_id=user.id, shortcut=f"k{i}", expansion=f"value-{i}"
+            user_id=test_user.id, shortcut=f"k{i}", expansion=f"value-{i}"
         )
         db_session.add(snippet)
         await db_session.commit()
@@ -62,9 +36,9 @@ async def seeded(db_session: AsyncSession) -> list[int]:
 
 @pytest.mark.asyncio
 async def test_paginate_first_page_no_cursor(
-    db_session: AsyncSession, seeded: list[int]
+    db_session: AsyncSession, seeded: list[int], test_user: User
 ) -> None:
-    stmt = select(Snippet).where(Snippet.user_id == 1)
+    stmt = select(Snippet).where(Snippet.user_id == test_user.id)
     items, next_cursor = await paginate(
         db=db_session, stmt=stmt, cursor=None, size=2, id_column=Snippet.id
     )
@@ -75,10 +49,10 @@ async def test_paginate_first_page_no_cursor(
 
 @pytest.mark.asyncio
 async def test_paginate_applies_id_lt_cursor(
-    db_session: AsyncSession, seeded: list[int]
+    db_session: AsyncSession, seeded: list[int], test_user: User
 ) -> None:
     cursor = seeded[-1]
-    stmt = select(Snippet).where(Snippet.user_id == 1)
+    stmt = select(Snippet).where(Snippet.user_id == test_user.id)
     items, next_cursor = await paginate(
         db=db_session,
         stmt=stmt,
@@ -93,9 +67,9 @@ async def test_paginate_applies_id_lt_cursor(
 
 @pytest.mark.asyncio
 async def test_paginate_last_page_returns_none_cursor(
-    db_session: AsyncSession, seeded: list[int]
+    db_session: AsyncSession, seeded: list[int], test_user: User
 ) -> None:
-    stmt = select(Snippet).where(Snippet.user_id == 1)
+    stmt = select(Snippet).where(Snippet.user_id == test_user.id)
     items, next_cursor = await paginate(
         db=db_session, stmt=stmt, cursor=None, size=10, id_column=Snippet.id
     )
@@ -106,9 +80,9 @@ async def test_paginate_last_page_returns_none_cursor(
 
 @pytest.mark.asyncio
 async def test_paginate_detects_next_page_via_size_plus_one(
-    db_session: AsyncSession, seeded: list[int]
+    db_session: AsyncSession, seeded: list[int], test_user: User
 ) -> None:
-    stmt = select(Snippet).where(Snippet.user_id == 1)
+    stmt = select(Snippet).where(Snippet.user_id == test_user.id)
     items, next_cursor = await paginate(
         db=db_session, stmt=stmt, cursor=None, size=4, id_column=Snippet.id
     )
@@ -120,9 +94,9 @@ async def test_paginate_detects_next_page_via_size_plus_one(
 
 @pytest.mark.asyncio
 async def test_paginate_no_extra_row_means_no_next_cursor(
-    db_session: AsyncSession, seeded: list[int]
+    db_session: AsyncSession, seeded: list[int], test_user: User
 ) -> None:
-    stmt = select(Snippet).where(Snippet.user_id == 1)
+    stmt = select(Snippet).where(Snippet.user_id == test_user.id)
     items, next_cursor = await paginate(
         db=db_session, stmt=stmt, cursor=None, size=5, id_column=Snippet.id
     )

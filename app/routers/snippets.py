@@ -15,8 +15,8 @@ from app.services.snippets import SnippetService
 
 router = APIRouter(prefix="/snippets")
 
-MAX_PAGE_SIZE = 20
 DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = DEFAULT_PAGE_SIZE
 
 
 @router.post(
